@@ -141,7 +141,7 @@ final class ImplicitRouteBindingScopeRule implements TenantRuleInterface
     private function hasNestedTenantParameters(string $uri, GuardConfig $config): bool
     {
         preg_match_all('/\{([a-zA-Z0-9_]+)\}/', $uri, $matches);
-        $params = $matches[1] ?? [];
+        $params = $matches[1];
         if (count($params) < 2) {
             return false;
         }
