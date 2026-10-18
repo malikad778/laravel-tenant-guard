@@ -1,0 +1,42 @@
+parameters:
+    tenantGuard:
+        paths: []
+        strict_all_tables: false
+        tenant_columns: []
+        tenant_tables: []
+        global_tables: []
+        global_models: []
+        safe_scope_methods: []
+        safe_cache_prefixes: []
+        tenant_disks: []
+        tenant_cache_stores: []
+        safe_cache_keys: []
+        tenant_context_identifiers: []
+        rules: []
+        ignore_annotation: '@@tenant-safe'
+
+parametersSchema:
+    tenantGuard: structure([
+        paths: listOf(string()),
+        strict_all_tables: bool(),
+        tenant_columns: listOf(string()),
+        tenant_tables: listOf(string()),
+        global_tables: listOf(string()),
+        global_models: listOf(string()),
+        safe_scope_methods: listOf(string()),
+        safe_cache_prefixes: listOf(string()),
+        tenant_disks: listOf(string()),
+        tenant_cache_stores: listOf(string()),
+        safe_cache_keys: listOf(string()),
+        tenant_context_identifiers: listOf(string()),
+        rules: arrayOf(bool()),
+        ignore_annotation: string()
+    ])
+
+services:
+    -
+        class: MalikAd\TenantGuard\PHPStan\TenantGuardPHPStanRule
+        arguments:
+            options: %tenantGuard%
+        tags:
+            - phpstan.rules.rule

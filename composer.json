@@ -1,0 +1,75 @@
+{
+    "name": "malikad/laravel-tenant-guard",
+    "description": "AST static analysis guard for Laravel multi-tenant SaaS applications preventing cross-tenant data leaks, cache collisions, and unscoped queries.",
+    "keywords": [
+        "laravel",
+        "tenancy",
+        "ast",
+        "static-analysis",
+        "security",
+        "phpstan",
+        "filament"
+    ],
+    "homepage": "https://github.com/malikad778/laravel-tenant-guard",
+    "support": {
+        "issues": "https://github.com/malikad778/laravel-tenant-guard/issues",
+        "source": "https://github.com/malikad778/laravel-tenant-guard"
+    },
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Malik Adnan",
+            "email": "contact@codebyadnan.tech"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/support": "^10.0|^11.0|^12.0",
+        "illuminate/console": "^10.0|^11.0|^12.0",
+        "nikic/php-parser": "^5.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.1|^11.0",
+        "orchestra/testbench": "^8.0|^9.0|^10.0",
+        "phpstan/phpstan": "^2.0"
+    },
+    "suggest": {
+        "phpstan/phpstan": "Allows running TenantGuard as a native PHPStan static analysis rule (^2.0).",
+        "phpstan/extension-installer": "Automatically discovers and enables TenantGuard in PHPStan."
+    },
+    "autoload": {
+        "psr-4": {
+            "MalikAd\\TenantGuard\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MalikAd\\TenantGuard\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/tenant-guard"
+    ],
+    "scripts": {
+        "test": "phpunit",
+        "analyse": "phpstan analyse"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "MalikAd\\TenantGuard\\TenantGuardServiceProvider"
+            ],
+            "aliases": {
+                "TenantGuard": "MalikAd\\TenantGuard\\Facades\\TenantGuard"
+            }
+        },
+        "phpstan": {
+            "includes": [
+                "extension.neon"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

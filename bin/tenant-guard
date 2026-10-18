@@ -1,0 +1,287 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Polyfill Laravel helpers if running standalone outside of Laravel bootstrap
+if (!function_exists('env')) {
+    function env(string $key, mixed $default = null): mixed {
+        $val = getenv($key);
+        return $val !== false ? $val : $default;
+    }
+}
+if (!function_exists('base_path')) {
+    function base_path(string $path = ''): string {
+        $base = getcwd() ?: '.';
+        return $path !== '' ? $base . DIRECTORY_SEPARATOR . ltrim($path, '/\\') : $base;
+    }
+}
+if (!function_exists('app_path')) {
+    function app_path(string $path = ''): string {
+        return base_path('app' . ($path !== '' ? '/' . $path : ''));
+    }
+}
+if (!function_exists('config_path')) {
+    function config_path(string $path = ''): string {
+        return base_path('config' . ($path !== '' ? '/' . $path : ''));
+    }
+}
+if (!function_exists('config')) {
+    function config(mixed $key = null, mixed $default = null): mixed {
+        return $default;
+    }
+}
+
+$autoloadCandidates = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+$loaded = false;
+foreach ($autoloadCandidates as $autoloadFile) {
+    if (is_file($autoloadFile)) {
+        require_once $autoloadFile;
+        $loaded = true;
+        break;
+    }
+}
+
+if (!$loaded) {
+    fwrite(STDERR, "Error: Composer autoload file not found. Run 'composer install' first.\n");
+    exit(2);
+}
+
+use MalikAd\TenantGuard\Support\GuardConfig;
+use MalikAd\TenantGuard\TenantGuardAnalyzer;
+
+$version = '1.0.0';
+$args = array_slice($argv, 1);
+
+$format = 'text';
+$paths = [];
+$strict = null;
+$filterRule = null;
+$baselineFile = null;
+$generateBaseline = false;
+$ignoreParseErrors = false;
+
+$count = count($args);
+for ($i = 0; $i < $count; $i++) {
+    $arg = $args[$i];
+
+    if ($arg === '--help' || $arg === '-h') {
+        fwrite(STDOUT, <<<HELP
+Laravel Tenant Guard CLI (version {$version})
+
+Usage:
+  tenant-guard [action] [paths...] [options]
+
+Actions:
+  audit                    Run AST static analysis (default)
+
+Options:
+  --format=<format>        Output format: text, json, sarif, github (default: text)
+  --path=<path>            Path to scan (can be repeated)
+  --strict                 Treat all non-global tables as tenant-owned
+  --no-strict              Only treat tenant_tables as tenant-owned
+  --rule=<ruleId>          Filter audit to a specific rule ID
+  --baseline=<file>        Path to a baseline JSON file to ignore known violations
+  --generate-baseline      Export current violations as a baseline file
+  --ignore-parse-errors    Do not fail the audit on PHP parse errors
+  -h, --help               Display this help message
+  -V, --version            Display version information
+
+HELP);
+        exit(0);
+    }
+
+    if ($arg === '--version' || $arg === '-V') {
+        fwrite(STDOUT, sprintf("Laravel Tenant Guard version %s\n", $version));
+        exit(0);
+    }
+
+    if ($arg === 'audit') {
+        continue;
+    }
+
+    if ($arg === '--strict') {
+        $strict = true;
+        continue;
+    }
+
+    if ($arg === '--no-strict') {
+        $strict = false;
+        continue;
+    }
+
+    if ($arg === '--generate-baseline') {
+        $generateBaseline = true;
+        continue;
+    }
+
+    if ($arg === '--ignore-parse-errors') {
+        $ignoreParseErrors = true;
+        continue;
+    }
+
+    if (str_starts_with($arg, '--format=')) {
+        $format = strtolower(substr($arg, strlen('--format=')));
+        continue;
+    }
+    if ($arg === '--format' && isset($args[$i + 1])) {
+        $format = strtolower($args[++$i]);
+        continue;
+    }
+
+    if (str_starts_with($arg, '--path=')) {
+        $paths[] = substr($arg, strlen('--path='));
+        continue;
+    }
+    if ($arg === '--path' && isset($args[$i + 1])) {
+        $paths[] = $args[++$i];
+        continue;
+    }
+
+    if (str_starts_with($arg, '--rule=')) {
+        $filterRule = substr($arg, strlen('--rule='));
+        continue;
+    }
+    if ($arg === '--rule' && isset($args[$i + 1])) {
+        $filterRule = $args[++$i];
+        continue;
+    }
+
+    if (str_starts_with($arg, '--baseline=')) {
+        $baselineFile = substr($arg, strlen('--baseline='));
+        continue;
+    }
+    if ($arg === '--baseline' && isset($args[$i + 1])) {
+        $baselineFile = $args[++$i];
+        continue;
+    }
+
+    if (!str_starts_with($arg, '-')) {
+        $paths[] = $arg;
+    }
+}
+
+$cwd = getcwd() ?: '.';
+$configPath = $cwd . '/config/tenant-guard.php';
+$rawOptions = is_file($configPath) ? (array) require $configPath : [];
+
+if ($strict !== null) {
+    $rawOptions['strict_all_tables'] = $strict;
+}
+if ($filterRule !== null) {
+    $rawOptions['rules'] = [
+        $filterRule => true,
+    ];
+}
+if ($ignoreParseErrors) {
+    $rawOptions['ignore_parse_errors'] = true;
+}
+
+$config = new GuardConfig($rawOptions);
+
+if ($paths === []) {
+    foreach ($config->paths as $defaultPath) {
+        $candidate = $cwd . DIRECTORY_SEPARATOR . $defaultPath;
+        if (file_exists($candidate)) {
+            $paths[] = $candidate;
+        }
+    }
+}
+
+if ($paths === []) {
+    $paths = [$cwd];
+}
+
+$analyzer = new TenantGuardAnalyzer($config);
+$result = $analyzer->analyzePaths($paths, $baselineFile);
+
+// Handle baseline generation
+if ($generateBaseline) {
+    $baselinePath = $baselineFile ?? ($cwd . '/tenant-guard-baseline.json');
+    $baselineData = $result->generateBaseline($cwd);
+    file_put_contents($baselinePath, json_encode($baselineData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    fwrite(STDOUT, sprintf("Baseline successfully written to %s with %d ignored violations.\n", $baselinePath, $result->totalViolations()));
+    exit(0);
+}
+
+// Format: JSON
+if ($format === 'json') {
+    $json = json_encode($result->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    fwrite(STDOUT, ($json !== false ? $json : '{}') . "\n");
+    exit($result->passed() ? 0 : 1);
+}
+
+// Format: SARIF
+if ($format === 'sarif') {
+    $sarif = json_encode($result->toSarif($cwd), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    fwrite(STDOUT, ($sarif !== false ? $sarif : '{}') . "\n");
+    exit($result->passed() ? 0 : 1);
+}
+
+// Format: GitHub Actions Workflow Commands
+if ($format === 'github') {
+    foreach ($result->toGitHubAnnotations($cwd) as $annotation) {
+        fwrite(STDOUT, $annotation . "\n");
+    }
+    if (!$result->passed()) {
+        fwrite(STDERR, sprintf("TenantGuard detected %d violation(s).\n", $result->totalViolations()));
+        exit(1);
+    }
+    exit(0);
+}
+
+// Format: Human Readable Text / Console
+fwrite(STDOUT, sprintf(
+    "Laravel Tenant Guard scanned %d file(s) in %.2f ms.\n\n",
+    $result->filesScanned,
+    $result->elapsedMilliseconds
+));
+
+if ($result->parseErrors !== []) {
+    foreach ($result->parseErrors as $file => $errorMessage) {
+        fwrite(STDERR, sprintf("[PARSE ERROR] %s: %s\n", $file, $errorMessage));
+    }
+    fwrite(STDERR, "\n");
+}
+
+if ($result->filesScanned === 0) {
+    fwrite(STDERR, "[FAIL] No PHP files found in specified path(s).\n");
+    exit(1);
+}
+
+if ($result->passed()) {
+    $msg = "[PASS] Zero cross-tenant isolation leaks found.";
+    if ($result->baselineIgnoredCount > 0) {
+        $msg .= sprintf(" (%d baseline violation(s) ignored)", $result->baselineIgnoredCount);
+    }
+    fwrite(STDOUT, $msg . "\n");
+    exit(0);
+}
+
+$normalizedBase = rtrim(str_replace('\\', '/', $cwd), '/') . '/';
+
+foreach ($result->violations as $violation) {
+    $displayFile = str_replace('\\', '/', $violation->file);
+    if (str_starts_with($displayFile, $normalizedBase)) {
+        $displayFile = substr($displayFile, strlen($normalizedBase));
+    }
+
+    fwrite(
+        STDOUT,
+        sprintf(
+            "[FAIL] [%s] %s:%d\n       %s\n       Fix: %s\n\n",
+            $violation->ruleId,
+            $displayFile,
+            $violation->line,
+            $violation->message,
+            $violation->suggestion
+        )
+    );
+}
+
+fwrite(STDERR, sprintf("Total violations: %d\n", $result->totalViolations()));
+exit(1);
