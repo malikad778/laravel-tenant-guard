@@ -36,4 +36,7 @@ jobs:
         run: vendor/bin/phpstan analyse --memory-limit=512M
 
       - name: Run standalone binary check
-        run: ./bin/tenant-guard --version
+        run: |
+          chmod +x ./bin/tenant-guard
+          ./bin/tenant-guard --version
+
